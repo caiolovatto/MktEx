@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>CRM MKTex</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --primary:#2B0C73;
+    --primary-dk:#1B0850;
+    --lavender:#EFE9FB;
+    --lavender-2:#D9CCF3;
+    --ink:#241748;
+    --muted:#6B5E96;
+    --coral:#FF6A4D;
+    --coral-dk:#9E3A26;
+    --bg:#F7F5FC;
+    --white:#FFFFFF;
+    --danger:#C0392B;
+
+    /* Cores por estágio (nível de avanço/importância no funil) */
+    --stage-novo:#6B7280;
+    --stage-novo-bg:#F1F2F4;
+    --stage-contato:#2563EB;
+    --stage-contato-bg:#E8EFFD;
+    --stage-proposta:#B7871A;
+    --stage-proposta-bg:#FBF1DC;
+    --stage-negociacao:#E8630A;
+    --stage-negociacao-bg:#FDEAD9;
+    --stage-ganho:#1E8E4F;
+    --stage-ganho-bg:#E4F5EA;
+    --stage-perdido:#C0392B;
+    --stage-perdido-bg:#FBE4E1;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);}
+  .app{max-width:1200px;margin:0 auto;padding:24px 20px 60px;}
+  header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px;}
+  header h1{font-size:22px;margin:0 0 4px;}
+  header p{margin:0;color:var(--muted);font-size:13px;}
+  .btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:var(--primary-dk);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-ghost{background:var(--white);color:var(--primary);border:1px solid var(--lavender-2);}
+  .btn-ghost:hover{background:var(--lavender);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+  .stat-card{background:var(--white);border-radius:12px;padding:14px 16px;border:1px solid var(--lavender-2);}
+  .stat-card .num{font-size:24px;font-weight:700;color:var(--primary);}
+  .stat-card .label{font-size:12px;color:var(--muted);margin-top:2px;}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center;}
+  .filters select, .filters input[type=text]{padding:8px 10px;border:1px solid var(--lavender-2);border-radius:8px;font-size:13px;background:var(--white);color:var(--ink);}
+  .filters .clear{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;background:none;border:none;padding:0;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+  .legend .item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);}
+  .legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .banner{background:#FBE4E1;border:1px solid #F0C4BC;color:var(--coral-dk);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:16px;display:none;}
+  .board{display:grid;grid-template-columns:repeat(5,minmax(210px,1fr));gap:12px;overflow-x:auto;}
+  .col{background:var(--lavender);border-radius:12px;padding:10px;min-height:120px;border-top:4px solid var(--col-accent,var(--primary));}
+  .col h3{font-size:13px;margin:2px 6px 10px;display:flex;justify-content:space-between;color:var(--ink);}
+  .col h3 .count{background:var(--col-accent,var(--primary));color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;}
+  .card{background:var(--white);border-radius:10px;padding:10px 12px 10px 10px;margin-bottom:8px;box-shadow:0 1px 2px rgba(36,23,72,0.08);cursor:pointer;border-left:4px solid var(--card-accent,var(--primary));}
+  .card:hover{box-shadow:0 2px 6px rgba(36,23,72,0.15);}
+  .card .name{font-weight:700;font-size:13.5px;margin-bottom:2px;}
+  .card .meta{font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .card .stage-pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9px;margin-bottom:6px;background:var(--pill-bg,var(--lavender));color:var(--pill-fg,var(--primary));}
+  .card .tags{display:flex;flex-wrap:wrap;gap:4px;}
+  .tag{background:var(--coral);color:#fff;font-size:10px;font-weight:600;padding:2px 7px;border-radius:9px;}
+  .empty{font-size:12px;color:var(--muted);padding:10px 4px;text-align:center;}
+  .overlay{position:fixed;inset:0;background:rgba(27,8,80,0.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;z-index:50;}
+  .modal{background:var(--white);border-radius:14px;padding:24px;width:100%;max-width:460px;}
+  .modal h2{margin:0 0 16px;font-size:18px;color:var(--primary);}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;}
+  .field input, .field select{width:100%;padding:9px 10px;border:1px solid var(--lavender-2);border-radius:8px;font-size:14px;background:var(--white);color:var(--ink);}
+  .field .err{color:var(--danger);font-size:11.5px;margin-top:4px;}
+  .modal-actions{display:flex;justify-content:space-between;margin-top:20px;gap:8px;}
+  .modal-actions .right{display:flex;gap:8px;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:16px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>CRM MKTex</h1>
+      <p id="subtitle">Carregando leads...</p>
+    </div>
+    <button class="btn" id="btnNovo">+ Novo lead</button>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filters">
+    <input type="text" id="fBusca" placeholder="Buscar por nome...">
+    <select id="fOrigem"><option value="">Todas as origens</option></select>
+    <select id="fVendedor"><option value="">Todos os vendedores</option></select>
+    <select id="fServico"><option value="">Todos os serviços</option></select>
+    <button class="clear" id="btnLimpar">Limpar filtros</button>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="board" id="board"></div>
+</div>
+
+<div class="overlay" id="overlay" style="display:none;">
+  <div class="modal">
+    <h2 id="modalTitle">Novo lead</h2>
+    <div class="field">
+      <label>Nome</label>
+      <input type="text" id="mNome" placeholder="Nome do lead">
+      <div class="err" id="errNome" style="display:none;">Informe o nome do lead</div>
+    </div>
+    <div class="field">
+      <label>Contato (telefone / WhatsApp)</label>
+      <input type="text" id="mContato" placeholder="(61) 99999-0000">
+    </div>
+    <div class="field">
+      <label>Origem</label>
+      <select id="mOrigem">
+        <option>Google Ads</option>
+        <option>Meta Ads</option>
+        <option>Google Meu Negócio</option>
+        <option>Indicação</option>
+        <option>Site / Orgânico</option>
+        <option>Outro</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Serviço de interesse</label>
+      <input type="text" id="mServico" placeholder="Ex: Instalação elétrica">
+    </div>
+    <div class="field">
+      <label>Vendedor responsável</label>
+      <input type="text" id="mVendedor" placeholder="Nome do vendedor">
+    </div>
+    <div class="field">
+      <label>Tags (separadas por vírgula)</label>
+      <input type="text" id="mTags" placeholder="urgente, retorno, cliente antigo">
+    </div>
+    <div class="field">
+      <label>Estágio</label>
+      <select id="mEstagio">
+        <option>Novo</option>
+        <option>Em contato</option>
+        <option>Proposta</option>
+        <option>Negociação</option>
+        <option>Fechado - ganho</option>
+        <option>Fechado - perdido</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <div>
+        <button class="btn-ghost" id="btnExcluir" style="display:none;border-color:#F0C4BC;color:var(--danger);">Excluir lead</button>
+      </div>
+      <div class="right">
+        <button class="btn-ghost" id="btnCancelar">Cancelar</button>
+        <button class="btn" id="btnSalvar">Salvar</button>
+      </div>
+    </div>
+    <div class="hint">Os leads são salvos no Supabase e ficam disponíveis para toda a equipe, em qualquer dispositivo.</div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO DO SUPABASE
+   Troque os dois valores abaixo pelas credenciais do seu projeto:
+   Supabase > Project Settings > API > "Project URL" e "anon public key"
+   ============================================================ */
+const SUPABASE_URL = "https://ieqzqkxoacxqnsjgwscy.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcXpxa3hvYWN4cW5zamd3c2N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NzE5OTYsImV4cCI6MjEwNDU0Nzk5Nn0.ccIEUzlyhnVQKsGCP273p7h57PKRsp0hxXadfFTFHrY";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const TABLE = "leads";
+
+const ESTAGIOS = ["Novo","Em contato","Proposta","Negociação","Fechado - ganho","Fechado - perdido"];
+
+// Cores por nível de importância/avanço no funil
+const STAGE_COLORS = {
+  "Novo":              { accent: "var(--stage-novo)",       bg: "var(--stage-novo-bg)" },
+  "Em contato":         { accent: "var(--stage-contato)",     bg: "var(--stage-contato-bg)" },
+  "Proposta":           { accent: "var(--stage-proposta)",    bg: "var(--stage-proposta-bg)" },
+  "Negociação":         { accent: "var(--stage-negociacao)",  bg: "var(--stage-negociacao-bg)" },
+  "Fechado - ganho":    { accent: "var(--stage-ganho)",       bg: "var(--stage-ganho-bg)" },
+  "Fechado - perdido":  { accent: "var(--stage-perdido)",     bg: "var(--stage-perdido-bg)" },
+};
+
+let leads = [];
+let editingId = null;
+
+function showBanner(msg){
+  const b = document.getElementById("banner");
+  b.textContent = msg;
+  b.style.display = "block";
+}
+function hideBanner(){
+  document.getElementById("banner").style.display = "none";
+}
+
+async function loadLeads(){
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if(error){
+    showBanner("Não foi possível conectar ao Supabase. Confira SUPABASE_URL / SUPABASE_ANON_KEY e se a tabela '" + TABLE + "' existe. Detalhe: " + error.message);
+    leads = [];
+  } else {
+    hideBanner();
+    leads = data || [];
+  }
+  render();
+}
+
+function uniqueValues(field){
+  const set = new Set();
+  leads.forEach(l => { if(l[field]) set.add(l[field]); });
+  return Array.from(set).sort();
+}
+
+function populateFilterOptions(){
+  const fOrigem = document.getElementById("fOrigem");
+  const fVendedor = document.getElementById("fVendedor");
+  const fServico = document.getElementById("fServico");
+  const keepOrigem = fOrigem.value, keepVendedor = fVendedor.value, keepServico = fServico.value;
+  fOrigem.innerHTML = '<option value="">Todas as origens</option>' + uniqueValues("origem").map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  fVendedor.innerHTML = '<option value="">Todos os vendedores</option>' + uniqueValues("vendedor").map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  fServico.innerHTML = '<option value="">Todos os serviços</option>' + uniqueValues("servico").map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  fOrigem.value = keepOrigem; fVendedor.value = keepVendedor; fServico.value = keepServico;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function getFiltered(){
+  const busca = document.getElementById("fBusca").value.trim().toLowerCase();
+  const origem = document.getElementById("fOrigem").value;
+  const vendedor = document.getElementById("fVendedor").value;
+  const servico = document.getElementById("fServico").value;
+  return leads.filter(l => {
+    if(busca && !l.nome.toLowerCase().includes(busca)) return false;
+    if(origem && l.origem !== origem) return false;
+    if(vendedor && l.vendedor !== vendedor) return false;
+    if(servico && l.servico !== servico) return false;
+    return true;
+  });
+}
+
+function renderStats(){
+  const total = leads.length;
+  const abertos = leads.filter(l => !l.estagio.startsWith("Fechado")).length;
+  const ganhos = leads.filter(l => l.estagio === "Fechado - ganho").length;
+  const origens = uniqueValues("origem").length;
+  document.getElementById("stats").innerHTML = `
+    <div class="stat-card"><div class="num">${total}</div><div class="label">Leads no total</div></div>
+    <div class="stat-card"><div class="num">${abertos}</div><div class="label">Em andamento</div></div>
+    <div class="stat-card"><div class="num">${ganhos}</div><div class="label">Fechados - ganhos</div></div>
+    <div class="stat-card"><div class="num">${origens}</div><div class="label">Canais ativos</div></div>
+  `;
+}
+
+function renderLegend(){
+  document.getElementById("legend").innerHTML = ESTAGIOS.map(e => {
+    const c = STAGE_COLORS[e];
+    return `<span class="item"><span class="dot" style="background:${c.accent};"></span>${e}</span>`;
+  }).join("");
+}
+
+function renderBoard(){
+  const filtered = getFiltered();
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  ESTAGIOS.forEach(estagio => {
+    const cor = STAGE_COLORS[estagio];
+    const col = document.createElement("div");
+    col.className = "col";
+    col.style.setProperty("--col-accent", cor.accent);
+    const items = filtered.filter(l => l.estagio === estagio);
+    col.innerHTML = `<h3>${estagio}<span class="count">${items.length}</span></h3>`;
+    if(items.length === 0){
+      col.innerHTML += `<div class="empty">Sem leads</div>`;
+    } else {
+      items.forEach(l => {
+        const lCor = STAGE_COLORS[l.estagio] || cor;
+        const card = document.createElement("div");
+        card.className = "card";
+        card.style.setProperty("--card-accent", lCor.accent);
+        card.innerHTML = `
+          <span class="stage-pill" style="--pill-bg:${lCor.bg};--pill-fg:${lCor.accent};">${escapeHtml(l.estagio)}</span>
+          <div class="name">${escapeHtml(l.nome)}</div>
+          <div class="meta">${escapeHtml(l.origem)} · ${escapeHtml(l.vendedor || "sem vendedor")}${l.servico ? " · " + escapeHtml(l.servico) : ""}</div>
+          <div class="tags">${(l.tags||[]).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>
+        `;
+        card.addEventListener("click", () => openModal(l.id));
+        col.appendChild(card);
+      });
+    }
+    board.appendChild(col);
+  });
+}
+
+function render(){
+  document.getElementById("subtitle").textContent = `${leads.length} leads · organizados por origem, tag, vendedor e estágio`;
+  populateFilterOptions();
+  renderStats();
+  renderLegend();
+  renderBoard();
+}
+
+function openModal(id){
+  editingId = id || null;
+  const l = id ? leads.find(x => x.id === id) : null;
+  document.getElementById("modalTitle").textContent = l ? "Editar lead" : "Novo lead";
+  document.getElementById("mNome").value = l ? l.nome : "";
+  document.getElementById("mContato").value = l ? l.contato : "";
+  document.getElementById("mOrigem").value = l ? l.origem : "Google Ads";
+  document.getElementById("mServico").value = l ? l.servico : "";
+  document.getElementById("mVendedor").value = l ? l.vendedor : "";
+  document.getElementById("mTags").value = l ? (l.tags||[]).join(", ") : "";
+  document.getElementById("mEstagio").value = l ? l.estagio : "Novo";
+  document.getElementById("errNome").style.display = "none";
+  document.getElementById("btnExcluir").style.display = l ? "inline-block" : "none";
+  document.getElementById("overlay").style.display = "flex";
+}
+
+function closeModal(){
+  document.getElementById("overlay").style.display = "none";
+  editingId = null;
+}
+
+async function salvar(){
+  const nome = document.getElementById("mNome").value.trim();
+  if(!nome){
+    document.getElementById("errNome").style.display = "block";
+    return;
+  }
+  const dados = {
+    nome,
+    contato: document.getElementById("mContato").value.trim(),
+    origem: document.getElementById("mOrigem").value,
+    servico: document.getElementById("mServico").value.trim(),
+    vendedor: document.getElementById("mVendedor").value.trim(),
+    tags: document.getElementById("mTags").value.split(",").map(t => t.trim()).filter(Boolean),
+    estagio: document.getElementById("mEstagio").value,
+  };
+
+  const btnSalvar = document.getElementById("btnSalvar");
+  btnSalvar.disabled = true;
+
+  let error;
+  if(editingId){
+    ({ error } = await sb.from(TABLE).update(dados).eq("id", editingId));
+  } else {
+    ({ error } = await sb.from(TABLE).insert(dados));
+  }
+
+  btnSalvar.disabled = false;
+
+  if(error){
+    showBanner("Erro ao salvar lead: " + error.message);
+    return;
+  }
+  closeModal();
+  await loadLeads();
+}
+
+async function excluir(){
+  if(!editingId) return;
+  const { error } = await sb.from(TABLE).delete().eq("id", editingId);
+  if(error){
+    showBanner("Erro ao excluir lead: " + error.message);
+    return;
+  }
+  closeModal();
+  await loadLeads();
+}
+
+document.getElementById("btnNovo").addEventListener("click", () => openModal(null));
+document.getElementById("btnCancelar").addEventListener("click", closeModal);
+document.getElementById("btnSalvar").addEventListener("click", salvar);
+document.getElementById("btnExcluir").addEventListener("click", excluir);
+document.getElementById("mNome").addEventListener("input", () => { document.getElementById("errNome").style.display = "none"; });
+["fBusca","fOrigem","fVendedor","fServico"].forEach(id => {
+  document.getElementById(id).addEventListener("input", renderBoard);
+  document.getElementById(id).addEventListener("change", renderBoard);
+});
+document.getElementById("btnLimpar").addEventListener("click", () => {
+  document.getElementById("fBusca").value = "";
+  document.getElementById("fOrigem").value = "";
+  document.getElementById("fVendedor").value = "";
+  document.getElementById("fServico").value = "";
+  renderBoard();
+});
+
+// Atualiza em tempo real quando outro vendedor mexe em um lead
+sb.channel("leads-changes")
+  .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, () => {
+    loadLeads();
+  })
+  .subscribe();
+
+loadLeads();
+</script>
+</body>
+</html>
