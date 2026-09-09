@@ -38,11 +38,15 @@
   header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px;}
   header h1{font-size:22px;margin:0 0 4px;}
   header p{margin:0;color:var(--muted);font-size:13px;}
+  .header-actions{display:flex;align-items:center;gap:12px;}
+  .whoami{font-size:12.5px;color:var(--muted);text-align:right;}
+  .whoami strong{color:var(--ink);}
   .btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;}
   .btn:hover{background:var(--primary-dk);}
   .btn:disabled{opacity:.5;cursor:not-allowed;}
   .btn-ghost{background:var(--white);color:var(--primary);border:1px solid var(--lavender-2);}
   .btn-ghost:hover{background:var(--lavender);}
+  .btn-sm{padding:7px 12px;font-size:12.5px;}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
   .stat-card{background:var(--white);border-radius:12px;padding:14px 16px;border:1px solid var(--lavender-2);}
   .stat-card .num{font-size:24px;font-weight:700;color:var(--primary);}
@@ -76,16 +80,49 @@
   .modal-actions{display:flex;justify-content:space-between;margin-top:20px;gap:8px;}
   .modal-actions .right{display:flex;gap:8px;}
   .hint{font-size:11.5px;color:var(--muted);margin-top:16px;line-height:1.5;}
+
+  /* Tela de login */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .login-card{background:var(--white);border-radius:16px;padding:32px;width:100%;max-width:360px;box-shadow:0 4px 24px rgba(36,23,72,0.12);}
+  .login-card h1{font-size:20px;margin:0 0 4px;color:var(--primary);}
+  .login-card p{margin:0 0 20px;font-size:13px;color:var(--muted);}
+  .login-card .btn{width:100%;margin-top:6px;}
+  .login-err{color:var(--danger);font-size:12.5px;margin-top:10px;display:none;}
+  [data-view]{display:none;}
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- Tela de login -->
+<div class="login-wrap" data-view="login">
+  <div class="login-card">
+    <h1>CRM MKTex</h1>
+    <p>Acesso restrito à equipe. Entre com seu e-mail e senha.</p>
+    <div class="field">
+      <label>E-mail</label>
+      <input type="email" id="lEmail" placeholder="voce@mktex.com.br">
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="lSenha" placeholder="••••••••">
+    </div>
+    <button class="btn" id="btnEntrar">Entrar</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- App principal (só aparece logado) -->
+<div class="app" data-view="app">
   <header>
     <div>
       <h1>CRM MKTex</h1>
       <p id="subtitle">Carregando leads...</p>
     </div>
-    <button class="btn" id="btnNovo">+ Novo lead</button>
+    <div class="header-actions">
+      <div class="whoami">Logado como<br><strong id="whoamiEmail"></strong></div>
+      <button class="btn-ghost btn-sm" id="btnSair">Sair</button>
+      <button class="btn" id="btnNovo">+ Novo lead</button>
+    </div>
   </header>
 
   <div class="banner" id="banner"></div>
@@ -167,8 +204,6 @@
 <script>
 /* ============================================================
    CONFIGURAÇÃO DO SUPABASE
-   Troque os dois valores abaixo pelas credenciais do seu projeto:
-   Supabase > Project Settings > API > "Project URL" e "anon public key"
    ============================================================ */
 const SUPABASE_URL = "https://ieqzqkxoacxqnsjgwscy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcXpxa3hvYWN4cW5zamd3c2N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NzE5OTYsImV4cCI6MjEwNDU0Nzk5Nn0.ccIEUzlyhnVQKsGCP273p7h57PKRsp0hxXadfFTFHrY";
@@ -178,7 +213,6 @@ const TABLE = "leads";
 
 const ESTAGIOS = ["Novo","Em contato","Proposta","Negociação","Fechado - ganho","Fechado - perdido"];
 
-// Cores por nível de importância/avanço no funil
 const STAGE_COLORS = {
   "Novo":              { accent: "var(--stage-novo)",       bg: "var(--stage-novo-bg)" },
   "Em contato":         { accent: "var(--stage-contato)",     bg: "var(--stage-contato-bg)" },
@@ -190,6 +224,83 @@ const STAGE_COLORS = {
 
 let leads = [];
 let editingId = null;
+let realtimeChannel = null;
+
+/* ---------------- Autenticação ---------------- */
+
+function showView(name){
+  document.querySelectorAll("[data-view]").forEach(el => {
+    el.style.display = (el.dataset.view === name) ? (name === "login" ? "flex" : "block") : "none";
+  });
+}
+
+async function initAuth(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){
+    onLoggedIn(session);
+  } else {
+    showView("login");
+  }
+
+  sb.auth.onAuthStateChange((event, session) => {
+    if(event === "SIGNED_IN" && session){
+      onLoggedIn(session);
+    } else if(event === "SIGNED_OUT"){
+      onLoggedOut();
+    }
+  });
+}
+
+function onLoggedIn(session){
+  showView("app");
+  document.getElementById("whoamiEmail").textContent = session.user.email;
+  loadLeads();
+  if(!realtimeChannel){
+    realtimeChannel = sb.channel("leads-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, () => {
+        loadLeads();
+      })
+      .subscribe();
+  }
+}
+
+function onLoggedOut(){
+  showView("login");
+  if(realtimeChannel){
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  leads = [];
+}
+
+async function entrar(){
+  const email = document.getElementById("lEmail").value.trim();
+  const senha = document.getElementById("lSenha").value;
+  const errEl = document.getElementById("loginErr");
+  errEl.style.display = "none";
+
+  if(!email || !senha){
+    errEl.textContent = "Preencha e-mail e senha.";
+    errEl.style.display = "block";
+    return;
+  }
+
+  const btn = document.getElementById("btnEntrar");
+  btn.disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+  btn.disabled = false;
+
+  if(error){
+    errEl.textContent = "E-mail ou senha inválidos.";
+    errEl.style.display = "block";
+  }
+}
+
+async function sair(){
+  await sb.auth.signOut();
+}
+
+/* ---------------- CRM ---------------- */
 
 function showBanner(msg){
   const b = document.getElementById("banner");
@@ -207,7 +318,7 @@ async function loadLeads(){
     .order("created_at", { ascending: true });
 
   if(error){
-    showBanner("Não foi possível conectar ao Supabase. Confira SUPABASE_URL / SUPABASE_ANON_KEY e se a tabela '" + TABLE + "' existe. Detalhe: " + error.message);
+    showBanner("Não foi possível carregar os leads. Detalhe: " + error.message);
     leads = [];
   } else {
     hideBanner();
@@ -380,6 +491,10 @@ async function excluir(){
   await loadLeads();
 }
 
+document.getElementById("btnEntrar").addEventListener("click", entrar);
+document.getElementById("lSenha").addEventListener("keydown", e => { if(e.key === "Enter") entrar(); });
+document.getElementById("btnSair").addEventListener("click", sair);
+
 document.getElementById("btnNovo").addEventListener("click", () => openModal(null));
 document.getElementById("btnCancelar").addEventListener("click", closeModal);
 document.getElementById("btnSalvar").addEventListener("click", salvar);
@@ -397,14 +512,7 @@ document.getElementById("btnLimpar").addEventListener("click", () => {
   renderBoard();
 });
 
-// Atualiza em tempo real quando outro vendedor mexe em um lead
-sb.channel("leads-changes")
-  .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, () => {
-    loadLeads();
-  })
-  .subscribe();
-
-loadLeads();
+initAuth();
 </script>
 </body>
 </html>
